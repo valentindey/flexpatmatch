@@ -1,0 +1,240 @@
+\documentclass[11pt]{article}
+
+\usepackage{fullpage}
+\usepackage[utf8]{inputenc}
+\usepackage{float}
+
+\setlength\parindent{0pt}
+
+\usepackage[procnames]{listings}
+\usepackage{color}
+
+\definecolor{keywords}{RGB}{255,0,90}
+\definecolor{comments}{RGB}{0,0,113}
+\definecolor{red}{RGB}{160,0,0}
+\definecolor{green}{RGB}{0,150,0}
+ 
+\lstset{language=Python, 
+        basicstyle=\ttfamily\small, 
+        keywordstyle=\color{keywords},
+        commentstyle=\color{comments},
+        stringstyle=\color{red},
+        showstringspaces=false,
+        identifierstyle=\color{green},
+        procnamekeys={def,class},
+        numbers=left
+       }
+
+
+
+
+
+\title{\textbf{Flexible Pattern Matching\\ Zusammenfassung\\ \small mit ein bischen Python Code}}
+\author{Valentin Deyringer}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Simple Pattern Matching}
+
+\begin{itemize}
+	\item eine Schleife, die über den Text itertiert (kann beendet werden, sobald der restliche Text kürzer wäre als das Pattern selbst)
+	\item eine zweite Schleife, die an jeder Position des Textes über die nächsten Buchstaben und das Pattern iteriert und abbricht, sobald ein Buchstabe im Pattern nicht mit dem aktuellen Buchstaben im Text übereinstimmt
+	\item wenn die zweite Schleife komplett durchlaufen wurde, wurde ein Match gefunden
+\end{itemize}
+
+\begin{lstlisting}
+def simple_search(text, pattern):
+    for i in range(len(text) - len(pattern) + 1):
+        for j, char in enumerate(pattern):
+            if char != text[i+j]:
+                break
+        else:
+            yield i   
+\end{lstlisting}
+
+\section{Knuth-Morris-Pratt}
+
+\begin{itemize}
+	\item das selbe Prinzip wie beim Simple Pattern Matching
+	\item das Pattern wird jedoch bei einem Mismatch von Buchstaben "weiter nach vorne geschoben"
+	\item hierbei hilft eine Prefix-Tabelle (auch Next-Funktion) die die "Verschiebepositionen" speichert \\
+	(Die Verschiebeposition ist die Länge des längsten Suffix des Teils des Patterns der gefunden wurde, der gleichzeitig Präfix des gesamten Patterns ist)
+\end{itemize}
+
+TODO: besserer Code hier?!
+
+\begin{lstlisting}
+def get_prefix_table(pattern):
+    i, j = 0, -1
+    prefix_table = [-1] * (len(pattern) + 1)
+    while i < len(pattern):
+        while j >= 0 and pattern[j] != pattern[i]:
+            j = prefix_table[j]
+        i += 1
+        j += 1
+        if i == len(pattern):
+            prefix_table[i] = j
+        elif pattern[i] != pattern[j]:
+            prefix_table[i] = j
+        else:
+            prefix_table[i] = prefix_table[j]
+    return prefix_table
+\end{lstlisting}
+
+\begin{table}[H]
+\begin{center}
+	\begin{tabular}{|c|c|c|c|c|c|c|c|c|c|c|c|}
+	    \hline
+	    0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & match\\
+	    \hline
+	    a & b & r & a & c & a & d & a & b & r & a & \\
+	    \hline
+	    -1 & 0 & 0 & -1 & 1 & -1 & 1 & -1 & 0 & 0 & -1 & 4 \\
+	    \hline
+    \end{tabular}
+\end{center}
+\caption{Präfix-Tabelle für das Pattern \emph{abracadabra}}
+\end{table}
+
+\begin{lstlisting}
+def kmp_search(text, pattern, prefix_table):
+    i, j = 0, 0
+    while i < len(text):
+        while j >= 0 and text[i] != pattern[j]:
+            j = prefix_table[j]
+        i += 1
+        j += 1
+        if j == len(pattern):
+            yield i - len(pattern)
+            j = prefix_table[j]
+\end{lstlisting}
+
+\section{Shift-And}
+
+\begin{itemize}
+    \item Automat wird mit Bitmasken repräsentiert
+	\item Bitmasken für jeden Buchstaben im Pattern erstellen (alle anderen Buchstaben haben 0-Vektor als Bitmaske)
+	\item Vektor der einen Automaten repräsentiert, dessen Anfangszustand immer aktiv ist, wird durch Shift-Operationen "durchlaufen" und mit der Bitmaske des aktuell gelesenen Buchstabens im Text "verundet"
+	\item wenn der letzte Zustand des Automaten aktiv ist, wurde das Pattern gefunden
+	\item Endianness der Vektoren ist zu beachten! (immer Big Endian?)
+\end{itemize}
+
+\clearpage
+
+\begin{lstlisting}
+from BitVector import BitVector
+def get_bit_table(pattern, alphabet):
+    table = {}
+    for char in alphabet:
+        table[char] = BitVector(size=len(pattern))
+    for i, char in enumerate(pattern):
+        table[char] = table[char] | BitVector(size=len(pattern)-i-1) \
+                                    + BitVector(intVal=1) \
+                                    + BitVector(size=i)
+    return table
+\end{lstlisting}
+
+\begin{table}[H]
+\begin{center}
+    \begin{tabular}{|c|c|c|c|c|c|c|c|c|c|c|c|}
+	    \hline
+	    a & 1 & 0 & 0 & 1 & 0 & 1 & 0 & 1 & 0 & 0 & 1 \\
+	    \hline
+	    b & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+	    \hline
+	    r & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+	    \hline
+	    c & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+	    \hline
+	    d & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+	    \hline
+	    * & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+	    \hline
+    \end{tabular}
+\end{center}
+\caption{Bitmasken-Tabelle für das Pattern \emph{abracadabra}}
+\end{table}
+
+\begin{lstlisting}
+def shift_and_search(text, pattern, bit_table):
+    found = BitVector(intVal=1) + BitVector(size=len(pattern)-1)
+    zero = BitVector(size=len(pattern))
+    A = BitVector(size=len(pattern))
+    for i, char in enumerate(text):
+        A = (A<<1 | (BitVector(size=len(pattern)-1) \
+                     + BitVector(intVal=1))) \
+            & bit_table[char]
+        if A & found != zero:
+            yield i - len(pattern) + 1
+\end{lstlisting}
+
+\section{Shift-Or}
+
+\begin{itemize}
+	\item gleiches Konzept wie beim Shift-And Verfahren
+	\item hier repräsentieren 0en aktive und 1en inaktive Zustände, so kann der Schritt des "aktiv machens" des ersten Zustands des Automaten gespart werden, da beim shift automatisch eine neue 0 (aktiver Zustand) hinzugefügt wird
+	\item alle Bitvektoren sind hier natürlich invertiert
+\end{itemize}
+
+
+\section{Boyer-Moore}
+
+\begin{itemize}
+	\item Pattern wird wie zuvor von links nach rechts durch den Text geschoben, jedoch wird nun das Pattern von rechts nach links durchlaufen (in natürlichen Sprachen wird so üblicherweise früher ein Mismatch gefunden und das Pattern kann schneller verschoben werden)
+	\item für die Verschiebung werden zwei Heuristiken angewandt
+	\begin{itemize}
+        \item \textbf{Bad-Character Heuristik}\\
+        bei einem Mismatch kann das Pattern soweit verschoben werden, dass der aktuell im Text gelesene Buchstabe mit dem letzten vorkommen dieses Buchstabens im Pattern aligniert ist, wenn dieser Buchstabe gar nicht im Pattern vorkommt, kann das Pattern um seine ganze Länge verschoben werden
+        \item \textbf{Good-Suffix Heuristik}\\
+        Wenn das bis zum Mismatch gelesene Suffix des Patterns nochmals Infix des Patterns ist, kann das Pattern soweit verschoben werden, bis der gelesene Teil mit diesem Infix aligniert ist, kommt dieses Suffix kein zweites malim Pattern vor, kann das Pattern um seine ganze Länge verschoben werden 
+    \end{itemize}
+    \item es wird immer die maximale Verschiebung die sich durch diese Heristiken ergeben angewandt
+\end{itemize}
+
+TODO: Code
+
+
+\section{Horspool}
+
+\begin{itemize}
+	\item Wie bei Boyer-Moore wird der Text von links nach rechts, das Pattern aber von rechts nach links durchlaufen
+	\item sobald ein Mismatch erreicht wird, wird das Pattern soweit verschoben, dass das gerade gelesene Zeichen im Text mit dem letzen
+\end{itemize}
+
+TODO: debug horspool search! (überlappende Vorkommen nicht gefunden...)
+
+\begin{lstlisting}
+def get_horspool_table(pattern,alphabet):
+    table = {}
+    for char in alphabet:
+        try:
+            table[char] = pattern.rindex(char)
+        except ValueError:
+            table[char] = len(pattern)
+    return table
+\end{lstlisting}
+
+\begin{lstlisting}
+def horspool_search(text, pattern, horspool_table):
+    pos = 0
+    while pos <= len(text) - len(pattern):
+        j = len(pattern)-1
+        while j > 0 and text[pos + j] == pattern[j]:
+            j -= 1
+        if j == 0:
+            yield pos
+        pos = pos + horspool_table[text[pos+len(pattern)]]
+\end{lstlisting}
+
+\clearpage
+
+\section{Faktorbasierte Suche}
+
+\begin{itemize}
+	\item 
+\end{itemize}
+
+\end{document}
